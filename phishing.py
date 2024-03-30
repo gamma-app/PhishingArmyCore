@@ -27,6 +27,7 @@ tldcache = tldextract.TLDExtract()
 
 block_list = []
 block_list_extended = []
+raw_url_streams = {}
 
 # LOG initialization
 logging.basicConfig(filename="phishing.log",
@@ -34,13 +35,21 @@ logging.basicConfig(filename="phishing.log",
                     level=logging.INFO)
 
 
-def parse_domain(url):
+def get_raw_url_stream(source):
+    if source not in raw_url_streams:
+        raw_url_streams[source] = open(Config.outputdirectory+"raw_url_"+source+".txt", "w")
+    return raw_url_streams[source]
+
+
+def parse_domain(url, source):
     registered_domain = tldcache(url).registered_domain
     sub_domain = tldcache(url).subdomain
 
     # Remove punycode domain
     registered_domain = registered_domain.encode("idna").decode("utf-8")
     sub_domain = sub_domain.encode("idna").decode("utf-8")
+    out_stream = get_raw_url_stream(source)
+    out_stream.write(url + "\n")
 
     if sub_domain:
         full_domain = sub_domain + "." + registered_domain
@@ -62,7 +71,10 @@ def parse_domain(url):
 
 # Download data from phishtank.com
 def phishtank():
-    url_download = "https://data.phishtank.com/data/" + Config.phishtanktoken + "/online-valid.json.gz"
+    if Config.phishtanktoken:
+        url_download = "https://data.phishtank.com/data/" + Config.phishtanktoken + "/online-valid.json.gz"
+    else:
+        url_download = "https://data.phishtank.com/data/online-valid.json.gz"
 
     try:
         r = requests.get(url_download, headers=header_phishtank, timeout=timeout_connection)
@@ -83,7 +95,7 @@ def phishtank():
                     url = each["url"]
                     if url:
                         url = url.strip()
-                        parse_domain(url)
+                        parse_domain(url, 'phishtank')
 
     except Exception as e:
         logging.error(e, exc_info=True)
@@ -108,7 +120,7 @@ def urlscanio():
                         url = each["task"]["url"].lower()
                         if url:
                             url = url.strip()
-                            parse_domain(url)
+                            parse_domain(url, 'urlscanio')
 
         except Exception as e:
             logging.error(e, exc_info=True)
@@ -126,7 +138,7 @@ def openphish():
             for line in r.iter_lines(decode_unicode=True):
                 if line:
                     url = line.strip()
-                    parse_domain(url)
+                    parse_domain(url, 'openphish')
 
     except Exception as e:
         logging.error(e, exc_info=True)
@@ -150,7 +162,7 @@ def phishfindr():
                 for line in r.iter_lines(decode_unicode=True):
                     if line:
                         url = line.strip()
-                        parse_domain(url)
+                        parse_domain(url, 'phishfindr')
 
         except Exception as e:
             logging.error(e, exc_info=True)
@@ -168,7 +180,7 @@ def certpl():
             for line in r.iter_lines(decode_unicode=True):
                 if line:
                     url = line.strip()
-                    parse_domain(url)
+                    parse_domain(url, 'certpl')
 
     except Exception as e:
         logging.error(e, exc_info=True)
@@ -186,7 +198,7 @@ def phishuntio():
             for line in r.iter_lines(decode_unicode=True):
                 if line:
                     url = line.strip()
-                    parse_domain(url)
+                    parse_domain(url, 'phishuntio')
 
     except Exception as e:
         logging.error(e, exc_info=True)
@@ -237,27 +249,33 @@ def whitelist():
 def main():
     # Whitelist loading
     whitelist()
-    logging.info("Loading %s domain in white_list" % len(white_list))
+    logging.info("Loading %s domains in white_list" % len(white_list))
 
     # PhishTank loading
+    logging.info("Getting phishtank list")
     phishtank()
 
     # OpenPhish loading
+    logging.info("Getting openphish list")
     openphish()
 
     # PhishFindR loading
     # phishfindr()
 
     # Cert.pl loading
+    logging.info("Getting certpl list")
     certpl()
 
     # Phishunt.io loading
+    logging.info("Getting phishuntio list")
     phishuntio()
 
     # Urlscan.io loading
+    logging.info("Getting urlscanio list")
     urlscanio()
 
     # Eliminate duplicates and sort the generated lists
+    logging.info("Sorting lists")
     block_list_sorted = sorted(set(block_list))
     block_list_extended_sorted = sorted(set(block_list_extended))
 
@@ -304,6 +322,8 @@ def main():
 
         for item in block_list_extended_sorted:
             f.write("%s\n" % item)
+
+    logging.info("Done")
 
 
 if __name__ == "__main__":
